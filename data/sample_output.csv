@@ -1,0 +1,2 @@
+source,medium,show_or_brand,episode_or_campaign,track_title,artist,air_date,discovered_at,url,confidence,notes
+tunefind_popular,TV,Example Show,S01E02,Sample Song,Sample Artist,2025-10-10,2025-10-12T00:00:00Z,https://www.tunefind.com/popular,0.8,Example row
