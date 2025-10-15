@@ -1,25 +1,56 @@
 name: scrape-daily
 on:
   schedule:
-    - cron: "0 9 * * *" # daily 09:00 UTC
+    - cron: "0 9 * * *"   # daily 09:00 UTC
   workflow_dispatch: {}
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # allow push
+    env:
+      PYTHONUNBUFFERED: "1"
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements.txt
-- run: python -m playwright install --with-deps chromium
-      - run: playwright install --with-deps
-      - name: Run Tunefind Popular scrape
-        run: python src/pipeline.py --source tunefind_popular --out data/tunefind_popular.csv
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tunefind-popular
-          path: data/tunefind_popular.csv
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Ensure data dir exists
+        run: mkdir -p data
+
+      - name: Scrape IMDb titles
+        run: |
+          set -e
+          if [ -f data/imdb_titles.txt ]; then
+            while IFS= read -r URL; do
+              [[ -z "$URL" || "$URL" =~ ^# ]] && continue
+              echo "::group::IMDb $URL"
+              python -m src.pipeline --source imdb_soundtrack --url "$URL" --out data/_last_imdb.csv
+              python -m src.storage.master_ingest --in data/_last_imdb.csv --master data/master_sync_events.csv
+              echo "::endgroup::"
+            done < data/imdb_titles.txt
+          else
+            echo "No data/imdb_titles.txt found; skipping."
+          fi
+
+      - name: Commit CSV back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/*.csv || true
+          git commit -m "CI: update master CSV" || echo "No changes"
+          git push
